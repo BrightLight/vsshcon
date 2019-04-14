@@ -25,14 +25,15 @@ namespace Outstance.VsShellContext
     /// </summary>
     // This attribute tells the PkgDef creation utility (CreatePkgDef.exe) that this class is
     // a package.
-    [PackageRegistration(UseManagedResourcesOnly = true)]
+    [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
     // This attribute is used to register the informations needed to show the this package
     // in the Help/About dialog of Visual Studio.
-    [InstalledProductRegistration("#110", "#112", "1.0", IconResourceID = 400)]
+    [InstalledProductRegistration("VsShellContext", "Visual Studio Shell Context Menu", "1.0", IconResourceID = 400)]
     // This attribute is needed to let the shell know that this package exposes some menus.
     [ProvideMenuResource("Menus.ctmenu", 1)]
+    [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionExistsAndFullyLoaded_string, PackageAutoLoadFlags.BackgroundLoad)]
     [Guid(GuidList.guidVsShellContextPkgString)]
-    public sealed class VsShellContextPackage : Package
+    public sealed class VsShellContextPackage : AsyncPackage
     {
         private DTE _dte;
         private IVsMonitorSelection _monitorSelection;
@@ -61,16 +62,21 @@ namespace Outstance.VsShellContext
         /// Initialization of the package; this method is called right after the package is sited, so this is the place
         /// where you can put all the initilaization code that rely on services provided by VisualStudio.
         /// </summary>
-        protected override void Initialize()
+        protected override async System.Threading.Tasks.Task InitializeAsync(System.Threading.CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
             Trace.WriteLine (string.Format(CultureInfo.CurrentCulture, "Entering Initialize() of: {0}", this));
-            base.Initialize();
+            await base.InitializeAsync(cancellationToken, progress);
 
-            _dte = GetService(typeof(SDTE)) as DTE;
-            _monitorSelection = (IVsMonitorSelection)GetService(typeof(SVsShellMonitorSelection));
+            // When initialized asynchronously, we *may* be on a background thread at this point.
+            // Do any initialization that requires the UI thread after switching to the UI thread.
+            // Otherwise, remove the switch to the UI thread if you don't need it.
+            await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+
+            _dte = await GetServiceAsync(typeof(SDTE)) as DTE;
+            _monitorSelection = (IVsMonitorSelection)await GetServiceAsync(typeof(SVsShellMonitorSelection));
              
             // Add our command handlers for menu (commands must exist in the .vsct file)
-            OleMenuCommandService mcs = GetService(typeof(IMenuCommandService)) as OleMenuCommandService;
+            OleMenuCommandService mcs = await GetServiceAsync(typeof(IMenuCommandService)) as OleMenuCommandService;
             if ( null != mcs )
             {
                 // Create the command for the menu item.
